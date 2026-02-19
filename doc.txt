@@ -1,0 +1,76 @@
+import streamlit as st
+import geopandas as gpd
+import folium
+from streamlit_folium import st_folium
+import json
+
+# Page setup
+st.set_page_config(page_title="Pro GIS Analyzer", layout="wide")
+st.title("🌍 Advanced GIS Analysis & Export")
+st.markdown("Upload a GeoJSON file, apply a buffer, and download the results.")
+
+# 1. Sidebar - File Upload
+st.sidebar.header("Step 1: Upload Data")
+uploaded_file = st.sidebar.file_uploader("Choose a GeoJSON file", type=["geojson"])
+
+if uploaded_file is not None:
+    # Load data
+    gdf = gpd.read_file(uploaded_file)
+    
+    # 2. Sidebar - Buffer Analysis
+    st.sidebar.header("Step 2: Analysis Settings")
+    # Buffer distance is in degrees (approx 111km per degree at equator)
+    dist = st.sidebar.slider("Buffer Distance (Degrees)", 0.001, 0.500, 0.010, format="%.3f")
+    
+    # Run Buffer Analysis
+    # We use a copy to keep original points separate
+    gdf_buffer = gdf.copy()
+    gdf_buffer['geometry'] = gdf.buffer(dist)
+
+    # 3. Sidebar - Download Results
+    st.sidebar.header("Step 3: Export")
+    # Convert the buffer result back to GeoJSON format for download
+    buffer_json = gdf_buffer.to_json()
+    
+    st.sidebar.download_button(
+        label="📥 Download Buffer as GeoJSON",
+        data=buffer_json,
+        file_name="spatial_analysis_results.geojson",
+        mime="application/json"
+    )
+
+    # 4. Main Display - Interactive Map
+    st.subheader("Interactive Spatial View")
+    
+    # Center map on the data
+    avg_lat = gdf.geometry.centroid.y.mean()
+    avg_lon = gdf.geometry.centroid.x.mean()
+    m = folium.Map(location=[avg_lat, avg_lon], zoom_start=13, tiles="OpenStreetMap")
+
+    # Add Buffer Layer (Blue)
+    folium.GeoJson(
+        gdf_buffer, 
+        name="Buffer Zones",
+        style_function=lambda x: {'fillColor': '#3186cc', 'color': '#3186cc', 'fillOpacity': 0.4}
+    ).add_to(m)
+
+    # Add Original Points Layer (Red)
+    folium.GeoJson(
+        gdf, 
+        name="Original Data",
+        marker=folium.CircleMarker(radius=3, color="red", fill=True)
+    ).add_to(m)
+
+    folium.LayerControl().add_to(m)
+    
+    # Show the map
+    st_folium(m, width=1000, height=600)
+
+    # 5. Data Preview Table
+    with st.expander("View Attribute Table"):
+        st.write(gdf.drop(columns='geometry'))
+
+else:
+    st.info("👋 Welcome! Please upload a GeoJSON file in the sidebar to begin.")
+    st.write("Tip: You can get sample GeoJSON data from [geojson.io](https://geojson.io).")
+
